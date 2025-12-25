@@ -1,9 +1,9 @@
 package com.hackathon.config;
 
-import com.google.generativeai.GenerativeModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import okhttp3.OkHttpClient;
 
 @Configuration
 public class GeminiConfig {
@@ -15,7 +15,17 @@ public class GeminiConfig {
     private String modelName;
 
     @Bean
-    public GenerativeModel generativeModel() {
-        return new GenerativeModel(modelName, apiKey);
+    public OkHttpClient okHttpClient() {
+        return new OkHttpClient();
+    }
+
+    @Bean
+    public String geminiApiKey() {
+        return apiKey;
+    }
+
+    @Bean
+    public String geminiModelName() {
+        return modelName;
     }
 }

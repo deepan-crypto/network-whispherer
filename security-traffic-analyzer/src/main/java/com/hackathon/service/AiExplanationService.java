@@ -1,11 +1,15 @@
 package com.hackathon.service;
 
-import com.google.generativeai.GenerativeModel;
-import com.google.generativeai.model.Content;
-import com.google.generativeai.model.GenerateContentResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hackathon.dto.TrafficLog;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -13,7 +17,12 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AiExplanationService {
 
-    private final GenerativeModel generativeModel;
+    private final OkHttpClient okHttpClient;
+    private final String geminiApiKey;
+    private final String geminiModelName;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
     public String analyzeTraffic(TrafficLog log) {
         try {
@@ -24,15 +33,47 @@ public class AiExplanationService {
 
             log.info("Sending prompt to Gemini API for IP: {}", log.getDestinationIp());
 
-            GenerateContentResponse response = generativeModel.generateContent(systemPrompt);
+            String response = callGeminiApi(systemPrompt);
+            log.info("Received response from Gemini API: {}", response);
             
-            String explanation = response.getText();
-            log.info("Received response from Gemini API: {}", explanation);
-            
-            return explanation;
+            return response;
         } catch (Exception e) {
             log.error("Error calling Gemini API", e);
             throw new RuntimeException("Failed to analyze traffic with AI", e);
+        }
+    }
+
+    private String callGeminiApi(String prompt) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(
+            objectMapper.createObjectNode()
+                .putArray("contents")
+                .addObject()
+                .putArray("parts")
+                .addObject()
+                .put("text", prompt)
+        );
+
+        Request request = new Request.Builder()
+            .url(String.format("%s/%s:generateContent?key=%s", GEMINI_API_URL, geminiModelName, geminiApiKey))
+            .post(RequestBody.create(requestBody, MediaType.get("application/json")))
+            .build();
+
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("Gemini API error: " + response.code());
+            }
+
+            String responseBody = response.body().string();
+            JsonNode jsonNode = objectMapper.readTree(responseBody);
+            
+            return jsonNode
+                .path("candidates")
+                .get(0)
+                .path("content")
+                .path("parts")
+                .get(0)
+                .path("text")
+                .asText();
         }
     }
 
